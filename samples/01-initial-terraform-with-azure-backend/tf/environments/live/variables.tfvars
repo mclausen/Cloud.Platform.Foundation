@@ -1,0 +1,1 @@
+root_azure_subscription_id  = ""
