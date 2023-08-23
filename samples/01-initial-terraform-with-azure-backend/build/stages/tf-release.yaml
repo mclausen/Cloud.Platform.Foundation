@@ -7,8 +7,10 @@ stages:
   - stage: Release-${{ parameters.environment }}
     variables:
       - group: root-terraform-backend-credentials
-      - backend_tfvars: "${{ parameters.working_directory }}/tf/backend/backend.ci.tfvars"
-      - variable_tfvars: "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
+      - name: backend_tfvars
+        value: "${{ parameters.working_directory }}/tf/backend/backend.ci.tfvars"
+      - name: variable_tfvars
+        value:  "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
     jobs:
       - job: tf-release-${{ parameters.environment }}
         displayName: 'Validate Terraform'
