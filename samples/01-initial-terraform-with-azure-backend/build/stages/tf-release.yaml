@@ -35,7 +35,10 @@ stages:
               tokenPrefix: "#{"
               tokenSuffix: "}#"
               verbosity: detailed
-
+          - bash: |
+              mkdir $(infrastructure_workingdirectory)
+            displayName: Create Infrastructure Output folder
+            
           - bash: |
               terraform init -backend-config=$(backend_tfvars) -input=false
             env:
