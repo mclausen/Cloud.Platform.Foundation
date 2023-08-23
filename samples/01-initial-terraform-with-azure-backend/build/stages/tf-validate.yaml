@@ -15,31 +15,31 @@ stages:
         steps:
           - checkout: self
           - task: TerraformInstaller@0
-              displayName: "Use Terraform ${{ parameters.tf_version }}"
-              inputs:
-                terraformVersion: ${{ parameters.tf_version }}
+            displayName: "Use Terraform ${{ parameters.tf_version }}"
+            inputs:
+              terraformVersion: ${{ parameters.tf_version }}
 
           - task: qetza.replacetokens.replacetokens-task.replacetokens@3
-              displayName: "Replace tokens in backend.tfvars with variables from the CI/CD environment vars"
-              inputs:
-                targetFiles: $(backend_tfvars)
-                encoding: "auto"
-                writeBOM: true
-                actionOnMissing: "fail"
-                keepToken: false
-                tokenPrefix: "#{"
-                tokenSuffix: "}#"
-                verbosity: detailed
+            displayName: "Replace tokens in backend.tfvars with variables from the CI/CD environment vars"
+            inputs:
+              targetFiles: $(backend_tfvars)
+              encoding: "auto"
+              writeBOM: true
+              actionOnMissing: "fail"
+              keepToken: false
+              tokenPrefix: "#{"
+              tokenSuffix: "}#"
+              verbosity: detailed
 
           - bash: |
-                terraform init -backend-config=$(backend_tfvars) -input=false
-              env:
-                ARM_CLIENT_ID: $(sp_clientId)
-                ARM_CLIENT_SECRET: $(sp_clientSecret)
-                ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
-                ARM_TENANT_ID: $(sp_tenantId)
-              displayName: Initialize configuration
-              failOnStderr: true
+              terraform init -backend-config=$(backend_tfvars) -input=false
+            env:
+              ARM_CLIENT_ID: $(sp_clientId)
+              ARM_CLIENT_SECRET: $(sp_clientSecret)
+              ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
+              ARM_TENANT_ID: $(sp_tenantId)
+            displayName: Initialize configuration
+            failOnStderr: true
 
           - bash: terraform validate
             displayName: Validate Terraform configuration
