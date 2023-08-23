@@ -10,7 +10,7 @@ stages:
       - name: backend_tfvars
         value: "${{ parameters.working_directory }}/tf/backend/backend.ci.tfvars"
     jobs:
-      - job: tfvalidate
+      - job: tfvalidatejob
         displayName: 'Validate Terraform'
         steps:
           - checkout: self

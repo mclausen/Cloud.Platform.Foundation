@@ -4,7 +4,8 @@ parameters:
   environment:
 
 stages:
-  - stage: Release-${{ parameters.environment }}
+  - stage: release_${{ parameters.environment }}
+    displayName: Release to ${{ parameters.environment }}
     variables:
       - group: root-terraform-backend-credentials
       - name: backend_tfvars
@@ -12,7 +13,7 @@ stages:
       - name: variable_tfvars
         value:  "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
     jobs:
-      - job: tf-release-${{ parameters.environment }}
+      - job: tf_release_${{ parameters.environment }}
         displayName: 'Validate Terraform'
         steps:
           - checkout: self
