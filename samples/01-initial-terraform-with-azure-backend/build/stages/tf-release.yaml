@@ -42,6 +42,7 @@ stages:
               ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
               ARM_TENANT_ID: $(sp_tenantId)
             displayName: Initialize configuration
+            workingDirectory: "${{ parameters.working_directory }}"
             failOnStderr: true
           
           - bash: |
