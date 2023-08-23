@@ -13,7 +13,7 @@ stages:
       - name: variable_tfvars
         value:  "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
       - name: infrastructure_workingdirectory
-        value:  "${{ parameters.working_directory }}/main"
+        value:  "${{ parameters.working_directory }}/tf"
     jobs:
       - job: tf_release_${{ parameters.environment }}
         displayName: 'Update Infrastructure (${{ parameters.environment }})'
@@ -35,10 +35,7 @@ stages:
               tokenPrefix: "#{"
               tokenSuffix: "}#"
               verbosity: detailed
-          - bash: |
-              mkdir $(infrastructure_workingdirectory)
-            displayName: Create Infrastructure Output folder
-            
+
           - bash: |
               terraform init -backend-config=$(backend_tfvars) -input=false
             env:
