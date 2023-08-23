@@ -12,6 +12,8 @@ stages:
         value: "${{ parameters.working_directory }}/tf/backend/backend.ci.tfvars"
       - name: variable_tfvars
         value:  "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
+      - name: infrastructure_workingdirectory
+        value:  "${{ parameters.working_directory }}/main"
     jobs:
       - job: tf_release_${{ parameters.environment }}
         displayName: 'Update Infrastructure (${{ parameters.environment }})'
@@ -42,7 +44,7 @@ stages:
               ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
               ARM_TENANT_ID: $(sp_tenantId)
             displayName: Initialize configuration
-            workingDirectory: "${{ parameters.working_directory }}"
+            workingDirectory: $(infrastructure_workingdirectory)
             failOnStderr: true
           
           - bash: |
@@ -53,7 +55,7 @@ stages:
               ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
               ARM_TENANT_ID: $(sp_tenantId)
             displayName: Create execution plan
-            workingDirectory: "${{ parameters.working_directory }}"
+            workingDirectory: $(infrastructure_workingdirectory)
             failOnStderr: true
 
           - bash: |
@@ -65,5 +67,5 @@ stages:
               ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
               ARM_TENANT_ID: $(sp_tenantId)
             displayName: Apply execution plan
-            workingDirectory: "${{ parameters.working_directory }}"
+            workingDirectory: $(infrastructure_workingdirectory)
             failOnStderr: true
