@@ -16,7 +16,7 @@ stages:
         value:  "${{ parameters.working_directory }}/tf"
     jobs:
       - job: tf_release_${{ parameters.environment }}
-        displayName: 'Update Infrastructure (${{ parameters.environment }})'
+        displayName: 'Execute Terraform (${{ parameters.environment }})'
         steps:
           - checkout: self
           - task: TerraformInstaller@0
