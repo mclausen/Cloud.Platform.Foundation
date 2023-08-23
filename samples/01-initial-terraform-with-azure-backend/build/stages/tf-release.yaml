@@ -14,7 +14,7 @@ stages:
         value:  "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
     jobs:
       - job: tf_release_${{ parameters.environment }}
-        displayName: 'Validate Terraform'
+        displayName: 'Update Infrastructure (${{ parameters.environment }})'
         steps:
           - checkout: self
           - task: TerraformInstaller@0
@@ -52,7 +52,7 @@ stages:
               ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
               ARM_TENANT_ID: $(sp_tenantId)
             displayName: Create execution plan
-            workingDirectory: "${{ parameters.working_directory }}/main"
+            workingDirectory: "${{ parameters.working_directory }}"
             failOnStderr: true
 
           - bash: |
@@ -64,5 +64,5 @@ stages:
               ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
               ARM_TENANT_ID: $(sp_tenantId)
             displayName: Apply execution plan
-            workingDirectory: "${{ parameters.working_directory }}/main"
+            workingDirectory: "${{ parameters.working_directory }}"
             failOnStderr: true
