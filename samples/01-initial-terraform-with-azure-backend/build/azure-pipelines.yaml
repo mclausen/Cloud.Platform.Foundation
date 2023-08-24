@@ -1,0 +1,25 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - main
+      - task/*
+      - hack/*
+      - bug/*
+      - feature/*
+  paths:
+    include:
+      - samples/01-initial-terraform-with-azure-backend/*
+    exclude:
+      - README.md
+      - LICENSE.md
+
+variables:
+  - name: tf_version
+    value: '1.5.5'
+
+stages:
+  - template: main.yaml
+    parameters:
+      tf_version: $(tf_version)
+      working_directory: $(Build.Repository.LocalPath)/samples/01-initial-terraform-with-azure-backend

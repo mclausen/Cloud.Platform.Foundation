@@ -1,0 +1,15 @@
+parameters:
+  tf_version:
+  working_directory: 
+
+stages:
+  - template: 'stages/tf-validate.yaml'
+    parameters:
+      tf_version: ${{ parameters.tf_version }}
+      working_directory: ${{ parameters.working_directory }}
+  - template: 'stages/tf-release.yaml'
+    parameters:
+      tf_version: ${{ parameters.tf_version }}
+      working_directory: ${{ parameters.working_directory }}
+      environment: 'dev'
+      

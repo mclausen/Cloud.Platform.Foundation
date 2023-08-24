@@ -1,0 +1,71 @@
+parameters:
+  tf_version:
+  working_directory:
+  environment:
+
+stages:
+  - stage: release_${{ parameters.environment }}
+    displayName: Release to ${{ parameters.environment }}
+    variables:
+      - group: root-terraform-backend-credentials
+      - name: backend_tfvars
+        value: "${{ parameters.working_directory }}/tf/backend/backend.ci.tfvars"
+      - name: variable_tfvars
+        value:  "${{ parameters.working_directory }}/tf/environments/${{ parameters.environment }}/variables.tfvars"
+      - name: infrastructure_workingdirectory
+        value:  "${{ parameters.working_directory }}/tf"
+    jobs:
+      - job: tf_release_${{ parameters.environment }}
+        displayName: 'Execute Terraform (${{ parameters.environment }})'
+        steps:
+          - checkout: self
+          - task: TerraformInstaller@0
+            displayName: "Use Terraform ${{ parameters.tf_version }}"
+            inputs:
+              terraformVersion: ${{ parameters.tf_version }}
+
+          - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+            displayName: "Replace tokens in backend.tfvars with variables from the CI/CD environment vars"
+            inputs:
+              targetFiles: $(backend_tfvars)
+              encoding: "auto"
+              writeBOM: true
+              actionOnMissing: "fail"
+              keepToken: false
+              tokenPrefix: "#{"
+              tokenSuffix: "}#"
+              verbosity: detailed
+
+          - bash: |
+              terraform init -backend-config=$(backend_tfvars) -input=false
+            env:
+              ARM_CLIENT_ID: $(sp_clientId)
+              ARM_CLIENT_SECRET: $(sp_clientSecret)
+              ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
+              ARM_TENANT_ID: $(sp_tenantId)
+            displayName: Initialize configuration
+            workingDirectory: $(infrastructure_workingdirectory)
+            failOnStderr: true
+          
+          - bash: |
+              terraform plan -var-file=$(variable_tfvars) -input=false -out=tfplan
+            env:
+              ARM_CLIENT_ID: $(sp_clientId)
+              ARM_CLIENT_SECRET: $(sp_clientSecret)
+              ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
+              ARM_TENANT_ID: $(sp_tenantId)
+            displayName: Create execution plan
+            workingDirectory: $(infrastructure_workingdirectory)
+            failOnStderr: true
+
+          - bash: |
+              terraform apply -input=false -auto-approve tfplan
+              terraform output -json > output.${{ parameters.environment }}.json
+            env:
+              ARM_CLIENT_ID: $(sp_clientId)
+              ARM_CLIENT_SECRET: $(sp_clientSecret)
+              ARM_SUBSCRIPTION_ID: $(sp_subscriptionId)
+              ARM_TENANT_ID: $(sp_tenantId)
+            displayName: Apply execution plan
+            workingDirectory: $(infrastructure_workingdirectory)
+            failOnStderr: true
