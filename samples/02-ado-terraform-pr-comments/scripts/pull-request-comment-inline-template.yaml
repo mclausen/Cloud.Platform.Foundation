@@ -1,0 +1,34 @@
+## Add a Terraform plan output to Pull Request as a comment
+# Requies Terraform to be installed on the build agent
+# Requires that 'terraform plan' has been run and the output is saved to a file. Example `terraform plan -out tfplan`
+# The input is the path to the `tfplan` file
+
+## Usage Example:
+# azure-pipelines.yaml
+# - job: ...
+#   ...
+#   steps: ...
+#   - template: ../pull-request-comment-inline.yaml # Path from root of the repository to the yaml template
+#     parameters:
+#       terraformOutput: "${{ parameters.terraformOutput }} # Required string: the path to the terraform plan output
+
+parameters:
+  - name: terraformOutput
+    type: string
+    
+steps:
+  - task: PowerShell@2
+    displayName: 'Post Terraform Changes to Pull Request'
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    env:
+      personal_access_token: $(System.AccessToken)
+      pullRequestId: $(System.PullRequest.PullRequestId)
+      repositoryId: $(Build.Repository.ID)
+      projectName: $(System.TeamProject)
+      organizationUri: $(System.CollectionUri)
+      buildId: $(Build.BuildId)
+      terraformOutput: ${{ parameters.terraformOutput }}
+    inputs:
+      targetType: 'inline'
+      script: |
+<#PLACEHOLDER#>

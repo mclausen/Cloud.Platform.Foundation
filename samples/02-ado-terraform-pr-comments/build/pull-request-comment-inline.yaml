@@ -1,0 +1,491 @@
+## Add a Terraform plan output to Pull Request as a comment
+# Requies Terraform to be installed on the build agent
+# Requires that 'terraform plan' has been run and the output is saved to a file. Example `terraform plan -out tfplan`
+# The input is the path to the `tfplan` file
+
+## Usage Example:
+# azure-pipelines.yaml
+# - job: ...
+#   ...
+#   steps: ...
+#   - template: infrastructure/add-terraform-changes-as-pullrequest-comment.yaml@UmbracoPlatformRepository
+#     parameters:
+#       terraformOutput: "${{ parameters.terraformOutput }} # Required string: the path to the terraform plan output
+#       workingDirectory: "${{ parameters.working_directory }}/main" ##Required: the working directory of the terraform plan file
+
+parameters:
+  - name: terraformOutput
+    type: string
+  - name: workingDirectory
+    type: string
+    
+steps:
+  - task: PowerShell@2
+    displayName: 'Post Terraform Changes to Pull Request'
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    env:
+      personal_access_token: $(System.AccessToken)
+      pullRequestId: $(System.PullRequest.PullRequestId)
+      repositoryId: $(Build.Repository.ID)
+      projectName: $(System.TeamProject)
+      organizationUri: $(System.CollectionUri)
+      buildId: $(Build.BuildId)
+      terraformOutput: ${{ parameters.terraformOutput }}
+    inputs:
+      workingDirectory: ${{ parameters.workingDirectory }}
+      targetType: 'inline'
+      script: |
+        # Format-TerraformPlanOutputAsMarkdown.ps1
+        function Format-TerraformPlanOutputAsMarkdown {
+            param (
+                [Parameter(Mandatory = $true)] 
+                [string]$terraformPlanOutput
+            )
+            
+            $content = ""
+        
+            $content += "``````"
+            $includeLineSwitch = $false
+        
+            foreach ($item in $terraformPlanOutput) {
+                if (-not $includeLineSwitch) {
+                    $includeLineSwitch = $item -like "*Terraform will perform the following actions:*"
+                }
+                
+                if ($includeLineSwitch) {
+                    $content += "`r`n$( $item )" 
+                }
+            }
+            $content += "`r`n``````"
+            return $content
+        }
+
+        # Format-TerraformPullRequestThread.ps1
+        function Format-TerraformPullRequestThread {
+            param (
+               [Parameter(Mandatory = $true)]
+               [string]$TerraformPlanOutput,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $OrganizationUri,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $Project,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $BuildId,
+               
+               [Parameter(Mandatory=$true)]
+               [string]
+               $PullRequestId
+           )
+        
+           $organizationUriWithoutTrailingSlash = $OrganizationUri.Substring(0,$OrganizationUri.Length-1)
+        
+           $buildUri = [Uri]::EscapeUriString("$( $organizationUriWithoutTrailingSlash )/$( $Project )/_build/results?buildId=$( $BuildId )&view=logs")
+        
+           $content = "# Infrastructure Changes :warning: `r`n" + `
+               "Your build pipeline has detected changes!  `r`n" + `
+               "The automated build pipeline **will change** the following infrastructure after completing this Pull request.`r`n`r`n`r`n`r`n " + `
+               "[Click to go to detailed description]($( $buildUri ))`r`n"
+        
+           $codeBlock = Format-TerraformPlanOutputAsMarkdown -terraformPlanOutput $terraformPlanOutput
+           $content += $codeBlock
+        
+           $content += "`r`n`r`n`r`n"
+           $content += "---`r`n"
+           $content += "The build pipeline automatically generates this comment..`r`n"
+           
+           # Hash the content
+           $hasher = [System.Security.Cryptography.HashAlgorithm]::Create('sha256')
+           $hash = $hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($codeBlock))
+           $hashString = [System.BitConverter]::ToString($hash)
+           $contentHash = $hashString.Replace('-', '').ToLower()
+        
+           $content += "<small>Hash: $contentHash</small> `r`n"
+        
+           $anchor = "terraform-pullrequest"
+           $content += "<small>$anchor</small>"
+        
+           $obj = @{
+               Content = $content
+               ContentHash = $contentHash
+               PullRequestThreadAnchor = $watermark
+           }
+        
+           return $obj
+        }
+
+        # Get-PullRequestComments.ps1
+        function Get-PullRequestComments{
+            param (
+                [Parameter(Mandatory=$true)]
+                [string]
+                $OrganizationUri,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $Project,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PersonAccessToken,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $RepositoryId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PullRequestId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $BuildId
+            )
+            
+            $basicAuth =  "basic user:$PersonAccessToken"
+            $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes( $basicAuth  ) )
+            $headers = @{
+                          Authorization = "Basic $Base64AuthInfo"
+                        }
+        
+            $newThreadEndpoint = "$( $OrganizationUri )/$( $Project )/_apis/git/repositories/$( $RepositoryId )/pullRequests/$( $PullRequestId )/threads?api-version=7.0"
+        
+            $thread = Invoke-RestMethod -Uri $newThreadEndpoint -Headers $headers  -Method Get -ContentType 'application/json'
+            $thread
+        }
+
+        # Get-TerraformPullRequestThread.ps1
+        function Get-TerraformPullRequestThread {
+            param (
+                [Parameter(Mandatory=$true)]
+                [string]
+                $OrganizationUri,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $Project,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PersonAccessToken,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $RepositoryId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PullRequestId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $BuildId,
+        
+                [Parameter()]
+                [string]
+                $PullRequestCommentAnchor = "terraform-pullrequest"
+            )
+            
+            $comments = Get-PullRequestComments `
+                    -OrganizationUri $organizationUri `
+                    -Project $projectName `
+                    -PersonAccessToken $personal_access_token `
+                    -RepositoryId $repositoryId `
+                    -PullRequestId $pullRequestId `
+                    -BuildId $buildId
+        
+            $terraformPullRequestThread = $comments `
+                | Select-Object -ExpandProperty value `
+                | Select-Object -Property id, @{ Name = 'Comment';  Expression = { $_.comments | Where-Object { $_.content -like "*$PullRequestCommentAnchor*" } } }
+                | Where-Object { $null -ne $_.Comment }
+        
+            return $terraformPullRequestThread
+        }
+
+        # Add-PullRequestThread.ps1
+        function Add-PullRequestThread{
+            param (
+                [Parameter(Mandatory=$true)]
+                [string]
+                $OrganizationUri,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $Project,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PersonAccessToken,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $RepositoryId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PullRequestId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $BuildId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PrComment
+            )
+            
+            $basicAuth =  "basic user:$PersonAccessToken"
+            $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes( $basicAuth  ) )
+            $headers = @{
+                          Authorization = "Basic $Base64AuthInfo"
+                        }
+        
+            $newThreadEndpoint = "$( $OrganizationUri )/$( $Project )/_apis/git/repositories/$( $RepositoryId )/pullRequests/$( $PullRequestId )/threads?api-version=7.0"
+        
+            $newThread = @{
+                          Comments = @(
+                              @{
+                                  ParentCommentId = 0
+                                  Content         = $PrComment
+                                  CommentType     = "text"
+                              }
+                          )
+                          Status = "Active"
+                      }
+        
+            $newThreadBody = $newThread | ConvertTo-Json -Depth 10
+        
+            $thread = Invoke-RestMethod -Uri $newThreadEndpoint -Headers $headers  -Method Post -Body $newThreadBody -ContentType 'application/json'
+            $thread
+        }
+
+        # Remove-PullRequestThread.ps1
+        function Remove-PullRequestThread{
+            param (
+                [Parameter(Mandatory=$true)]
+                [string]
+                $OrganizationUri,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $Project,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PersonAccessToken,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $RepositoryId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PullRequestId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $BuildId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $ThreadId
+            )
+            
+            $basicAuth =  "basic user:$PersonAccessToken"
+            $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes( $basicAuth  ) )
+            $headers = @{
+                          Authorization = "Basic $Base64AuthInfo"
+                        }
+        
+            # Remove Thread
+            $removeThreadEndpoint = "$( $OrganizationUri )/$( $Project )/_apis/git/repositories/$( $RepositoryId )/pullRequests/$( $PullRequestId )/threads/$( $ThreadId )?api-version=7.0"
+        
+            $thread = Invoke-RestMethod -Uri $removeThreadEndpoint -Headers $headers  -Method Delete -ContentType 'application/json'
+        
+            return $thread
+        }
+
+        # Update-PullRequestThread.ps1
+        function Update-PullRequestThread {
+            param (
+                [Parameter(Mandatory=$true)]
+                [string]
+                $OrganizationUri,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $Project,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PersonAccessToken,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $RepositoryId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PullRequestId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $BuildId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $ThreadId,
+        
+                [Parameter(Mandatory=$true)]
+                [string]
+                $PrComment
+            )
+            
+            $basicAuth =  "basic user:$PersonAccessToken"
+            $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes( $basicAuth  ) )
+            $headers = @{
+                          Authorization = "Basic $Base64AuthInfo"
+                        }
+        
+            # Updated Comment
+            $updateCommentEndpoint = "$( $OrganizationUri )/$( $Project )/_apis/git/repositories/$( $RepositoryId )/pullRequests/$( $PullRequestId )/threads/$( $ThreadId )/comments/1?api-version=7.0"
+            $updateComment = @{
+                Content = $PrComment
+            }
+            $updateCommentBody = $updateComment | ConvertTo-Json -Depth 10
+            $thread = Invoke-RestMethod -Uri $updateCommentEndpoint -Headers $headers -Method Patch -Body $updateCommentBody -ContentType 'application/json'
+            
+            # Updated Thread
+            $newThreadEndpoint = "$( $OrganizationUri )/$( $Project )/_apis/git/repositories/$( $RepositoryId )/pullRequests/$( $PullRequestId )/threads/$( $ThreadId )?api-version=7.0"
+        
+            $newThread = @{
+                Status = "Active"
+            }
+        
+            $newThreadBody = $newThread | ConvertTo-Json -Depth 10
+        
+            $thread = Invoke-RestMethod -Uri $newThreadEndpoint -Headers $headers  -Method Patch -Body $newThreadBody -ContentType 'application/json'
+        }
+
+        # Set-PullRequestThread.ps1
+        function Set-PullRequestThread {
+            param (
+               [Parameter(Mandatory = $true)]
+               [string]$TerraformPlanOutput,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $OrganizationUri,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $Project,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $RepositoryId,
+        
+               [Parameter(Mandatory=$true)]
+               [string]
+               $BuildId,
+               
+               [Parameter(Mandatory=$true)]
+               [string]
+               $PullRequestId,
+               
+               [Parameter(Mandatory=$true)]
+               [string]
+               $PersonalAccessToken
+           )
+        
+           # Does Terraform Plan have changes?
+           $doesHaveChanges = $TerraformPlanOutput -like "*Terraform will perform the following actions:*"
+           
+           # Does Pull Request have a comment?
+           $existingPullRequestComment = Get-TerraformPullRequestThread `
+               -OrganizationUri $OrganizationUri `
+               -Project $Project `
+               -PersonAccessToken $PersonalAccessToken `
+               -RepositoryId $RepositoryId `
+               -PullRequestId $PullRequestId `
+               -BuildId $BuildId
+           
+           # Does not have changes and does not have existing comment
+           if(($doesHaveChanges -eq $False) -and ($null -eq $existingPullRequestComment)) 
+           {
+               Write-Host "No terraform changes where found and no existing comment found. No action required."
+               return
+           }
+        
+           # Does have changes and no existing comment
+           if(($doesHaveChanges) -and ($null -eq $existingPullRequestComment)) 
+           {
+               Write-Host "Terraform Changes Found, no previous comment found. Adding new PR Thread."
+               $pullRequestComment = Format-TerraformPullRequestThread `
+                               -TerraformPlanOutput $terraformPlanOutput `
+                               -OrganizationUri $OrganizationUri `
+                               -Project $Project `
+                               -PullRequestId $PullRequestId `
+                               -BuildId $BuildId
+        
+               Add-PullRequestThread `
+                   -OrganizationUri $OrganizationUri `
+                   -Project $Project `
+                   -PersonAccessToken $PersonalAccessToken `
+                   -RepositoryId $RepositoryId `
+                   -PullRequestId $PullRequestId `
+                   -BuildId $BuildId `
+                   -PrComment $pullRequestComment
+           }
+        
+           # Does not have changes and has existing comment
+           if(($doesHaveChanges -eq $False) -and ($null -ne $existingPullRequestComment)) 
+           {
+               Write-Host "No terraform changes where found and existing comment found. Removing PR Thread"
+               Remove-PullRequestThread `
+                   -OrganizationUri $OrganizationUri `
+                   -Project $Project `
+                   -PersonAccessToken $PersonalAccessToken `
+                   -RepositoryId $RepositoryId `
+                   -PullRequestId $PullRequestId `
+                   -BuildId $BuildId `
+                   -ThreadId $existingPullRequestComment.id
+           }
+        
+           # Does have changes and existing comment
+           if(($doesHaveChanges) -and ($null -ne $existingPullRequestComment))
+           {
+               Write-Host "Terraform Changes Found and Terraform Thread was found. Updating PR Thread to Reflect Changes"
+               $pullRequestComment = Format-TerraformPullRequestThread `
+                   -TerraformPlanOutput $terraformPlanOutput `
+                   -OrganizationUri $OrganizationUri `
+                   -Project $Project `
+                   -PullRequestId $PullRequestId `
+                   -BuildId $BuildId
+               
+                Update-PullRequestThread `
+                   -OrganizationUri $OrganizationUri `
+                   -Project $Project `
+                   -PersonAccessToken $PersonalAccessToken `
+                   -RepositoryId $RepositoryId `
+                   -PullRequestId $PullRequestId `
+                   -BuildId $BuildId `
+                   -ThreadId $existingPullRequestComment.id `
+                   -PrComment $pullRequestComment
+           }    
+        }
+
+        Set-PullRequestThread 
+            -TerraformPlanOutput $(terraformPlanOutput) 
+            -OrganizationUri $(organizationUri) 
+            -Project $(projectName) 
+            -RepositoryId $(repositoryId) 
+            -PullRequestId $(pullRequestId) 
+            -BuildId $(buildId) 
+            -PersonalAccessToken $(personal_access_token)
+
