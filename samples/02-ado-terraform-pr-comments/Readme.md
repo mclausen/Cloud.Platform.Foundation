@@ -1,5 +1,5 @@
 # Azure DevOps Pull Request Comment
-Creates a Azure DevOps Pipelines yaml task that will take the terraform std output and Create a Pull Request Comment, if the build is being triggered by a Pull Request
+Creates a Azure DevOps Pipelines yaml task that will take the terraform std output and Create a Pull Request Comment, if the build is being triggered by a Pull Request.
 
 ## How to build ADO task
 Building the ADO task is straight forward, and it will be outputted as `pull-request-comment-inline.yaml` in `build` folder.
@@ -8,9 +8,11 @@ Building the ADO task is straight forward, and it will be outputted as `pull-req
 2. Run `./Build-PullRequestADOTask.ps1`
 
 ## Using the Pull Request Comment file
-After a successfull build you can copy paste the `pull-request-comment-inline.yaml` to your repository directly.
+### Using file directly
+After a successfull build you can copy paste the `build/pull-request-comment-inline.yaml` to your repository directly.
 
-or you can reference the task file from the github repo directly and stay updated, with fixes
+### Reference the task from within your own pipeline
+You can reference the task file from the github repo directly and stay updated.
 
 ``` yaml
 resources:
