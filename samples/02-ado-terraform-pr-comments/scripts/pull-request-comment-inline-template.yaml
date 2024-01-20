@@ -1,8 +1,6 @@
 ## Add a Terraform plan output to Pull Request as a comment
 # Requies Terraform to be installed on the build agent
 # Requires that 'terraform plan' has been run and the output is saved to a file. Example `terraform plan -out tfplan`
-# The input is the path to the `tfplan` file
-
 ## Usage Example:
 # azure-pipelines.yaml
 # - job: ...
